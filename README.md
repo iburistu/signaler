@@ -33,7 +33,7 @@ Refer to the [wiki](https://github.com/AsamK/signal-cli/wiki/Quickstart#set-up-a
 
 signaler isn't currently on Docker Hub because of a bug with Cargo, buildx, and armv7l builds (more details [here](https://github.com/docker/buildx/issues/395)). Fortunately, it's straightforward to build from source with the following:
 
-> $ docker build https://github.com/iburistu/signaler#main -t iburistu/signaler
+> $ docker build https://github.com/iburistu/signaler.git\#main -t iburistu/signaler
 
 Depending on your machine...this may take a while. On a RPi 4 8GB version it took about 10 minutes and results in an image file of around 177MB. On my amd64 machine it took about 100s and results in an image file of around 191MB.
 
