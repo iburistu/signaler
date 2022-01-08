@@ -1,0 +1,10 @@
+[package]
+name = "signaler-webhook"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+dbus = "0.9.5"
+lazy_static = "1.4.0"
+rocket = { version = "0.5.0-rc.1", features = ["json"] }
+serde = "1.0.130"
