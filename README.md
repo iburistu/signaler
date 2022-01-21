@@ -18,7 +18,7 @@ You'll need the following:
 signaler has a fully functioning signal-cli binary included - with that you can create or link a Signal account to use as the sending party. More details can be found in the [signal-cli wiki](https://github.com/AsamK/signal-cli/wiki). To access the signal-cli binary, use the following:
 
 ```sh
-$ docker run -it --rm iburistu/signaler signal-cli \<command line options\>
+$ docker run -it --rm iburistu/signaler signal-cli <command line options>
 ```
 
 If you decide use the built-in signal-cli to create your signaler configuration, you could use a Docker volume, or just use a bind mount when linking / creating your account. You'd have to do something similar to the following:
@@ -40,7 +40,7 @@ Refer to the [wiki](https://github.com/AsamK/signal-cli/wiki/Quickstart#set-up-a
 signaler isn't currently on Docker Hub because of a bug with Cargo, buildx, and armv7l builds (more details [here](https://github.com/docker/buildx/issues/395)). Fortunately, it's straightforward to build from source with the following:
 
 ```sh
-$ docker build https://github.com/iburistu/signaler.git\#main -t iburistu/signaler
+$ docker build https://github.com/iburistu/signaler.git#main -t iburistu/signaler
 ```
 
 Depending on your machine...this may take a while. On a RPi 4 8GB version it took about 10 minutes and results in an image file of around 177MB. On my amd64 machine it took about 100s and results in an image file of around 191MB.
@@ -104,4 +104,4 @@ You can format the `message` value with emoji, newlines, etc. Get creative!
 
 ## Debugging
 
-supervisord pipes standard output & error of both processes (signal-cli in DBus mode, and the Rocket webhook) to `/dev/stdio`, so you can view logs using `docker log`.
+supervisord pipes standard output & error of both processes (signal-cli in DBus mode, and the Rocket webhook) to `/dev/stdout`, so you can view logs using `docker log`.
