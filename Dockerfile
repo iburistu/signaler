@@ -1,8 +1,8 @@
-FROM eclipse-temurin:11 as jre-build
+FROM eclipse-temurin:17 as jre-build
 
 RUN $JAVA_HOME/bin/jlink \
     --add-modules \
-        java.base,java.logging,java.xml,jdk.unsupported \
+        java.base,java.logging,java.xml,jdk.unsupported,jdk.security.auth \
     --strip-debug \
     --no-man-pages \
     --no-header-files \
@@ -24,7 +24,7 @@ WORKDIR /usr/local/bin/signaler
 RUN cargo build --release
 
 FROM ubuntu:20.04 as runner
-ARG SIGNAL_CLI_VER=0.9.2
+ARG SIGNAL_CLI_VER=0.10.1
 ARG LIBSIGNAL_VER=0.11.0
 ARG ZKGROUP_VER=0.8.2
 ENV JAVA_HOME=/opt/java/openjdk
@@ -81,12 +81,10 @@ RUN apt-get update -qq && \
         ;; \
     esac; \
     ls -la /tmp/ && \
-    zip -uj /opt/signal-cli-"${SIGNAL_CLI_VER}"/lib/signal-client-java-0.9.7.jar /tmp/libsignal_jni.so || \
-    zip -uj /opt/signal-cli-"${SIGNAL_CLI_VER}"/lib/zkgroup-java-0.8.2.jar /tmp/libzkgroup.so || \
+    zip -uj /opt/signal-cli-"${SIGNAL_CLI_VER}"/lib/signal-client-java-"${LIBSIGNAL_VER}".jar /tmp/libsignal_jni.so || \
+    zip -uj /opt/signal-cli-"${SIGNAL_CLI_VER}"/lib/zkgroup-java-"${ZKGROUP_VER}".jar /tmp/libzkgroup.so || \
     apt-get remove ca-certificates curl zip -y && \
-    rm -f /tmp/* && \
-    mkfifo /dev/signal && \
-    mkfifo /dev/webhook
+    rm -f /tmp/*
 
 WORKDIR /usr/local/bin/signaler
 
@@ -94,7 +92,8 @@ COPY --from=rust-build /usr/local/bin/signaler/target/release/signaler-webhook .
 COPY --from=rust-build /usr/local/bin/signaler/Rocket.toml .
 
 COPY supervisord.conf /etc/supervisor/conf.d/supervisord.conf
+COPY session-local.conf /etc/dbus-1/session-local.conf
 
-ENTRYPOINT [ "/usr/bin/dbus-run-session" ]
+ENTRYPOINT [ "/usr/bin/dbus-run-session", "--config-file", "/etc/dbus-1/session-local.conf" ]
 
 CMD [ "/usr/bin/supervisord", "-c", "/etc/supervisor/conf.d/supervisord.conf" ]
