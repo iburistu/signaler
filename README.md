@@ -17,15 +17,21 @@ You'll need the following:
 
 signaler has a fully functioning signal-cli binary included - with that you can create or link a Signal account to use as the sending party. More details can be found in the [signal-cli wiki](https://github.com/AsamK/signal-cli/wiki). To access the signal-cli binary, use the following:
 
-> $ docker run -it --rm iburistu/signaler signal-cli \<command line options\>
+```sh
+$ docker run -it --rm iburistu/signaler signal-cli \<command line options\>
+```
 
 If you decide use the built-in signal-cli to create your signaler configuration, you could use a Docker volume, or just use a bind mount when linking / creating your account. You'd have to do something similar to the following:
 
-> $ docker run -it --rm -v named-volume-or-bind-mount:$HOME/.local/share/signal-cli iburistu/signaler signal-cli -a +11111111111 register
+```sh
+$ docker run -it --rm -v named-volume-or-bind-mount:$HOME/.local/share/signal-cli iburistu/signaler signal-cli -a +11111111111 register
+```
 
 and 
 
-> $ docker run -it --rm -v named-volume-or-bind-mount:$HOME/.local/share/signal-cli iburistu/signaler signal-cli -a +11111111111 verify ###-####
+```sh
+$ docker run -it --rm -v named-volume-or-bind-mount:$HOME/.local/share/signal-cli iburistu/signaler signal-cli -a +11111111111 verify ###-####
+```
 
 Refer to the [wiki](https://github.com/AsamK/signal-cli/wiki/Quickstart#set-up-an-account) for more information.
 
@@ -33,7 +39,9 @@ Refer to the [wiki](https://github.com/AsamK/signal-cli/wiki/Quickstart#set-up-a
 
 signaler isn't currently on Docker Hub because of a bug with Cargo, buildx, and armv7l builds (more details [here](https://github.com/docker/buildx/issues/395)). Fortunately, it's straightforward to build from source with the following:
 
-> $ docker build https://github.com/iburistu/signaler.git\#main -t iburistu/signaler
+```sh
+$ docker build https://github.com/iburistu/signaler.git\#main -t iburistu/signaler
+```
 
 Depending on your machine...this may take a while. On a RPi 4 8GB version it took about 10 minutes and results in an image file of around 177MB. On my amd64 machine it took about 100s and results in an image file of around 191MB.
 
@@ -44,11 +52,13 @@ The easiest way to launch signaler is to use docker-compose. You need to set thr
 - SIGNAL_SENDER
     - Phone number of the Signal account to send messages on behalf of the webhook
 - SIGNAL_RECIPIENT
-    - Phone number of the Signal account to receive messages from the bot (currently only supports a single number - groups pending). Make sure that any usage of signaler follows the [Signal TOS](https://signal.org/legal/#terms-of-service).
+    - Phone number of the Signal account to receive messages from the bot, or the base64 encoded group ID to send messages to. Make sure that any usage of signaler follows the [Signal TOS](https://signal.org/legal/#terms-of-service).
 - SIGNALER_SECRET
     - Secret key to secure the webhook. You need to include this secret in the `Authorization` header of your webhook request as `Bearer <SECRET>`. I suggest using something like the following command as a starting point for a secure secret string: 
-      > $ cat /dev/urandom | tr -dc 'a-zA-Z0-9' | fold -w 64 | head -n 1
-
+      ```sh
+      $ cat /dev/urandom | tr -dc 'a-zA-Z0-9' | fold -w 64 | head -n 1
+      ```
+      
 You'll also need to mount the configuration of the sender account to `/etc/signal-cli`. Typically this is `$HOME/.local/share/signal-cli` but YMMV depending on how you linked or created a Signal account using signal-cli.
 
 Here's an example `docker-compose.yaml` configuration:
@@ -60,8 +70,10 @@ services:
   signaler:
     container_name: signaler
     environment:
-      - SIGNAL_SENDER="+11111111111"
-      - SIGNAL_RECIPIENT="+22222222222"
+      - SIGNAL_SENDER=+11111111111
+      - SIGNAL_RECIPIENT=+22222222222
+      # You could alternatively use a base64 encoded group ID like so
+      # SIGNAL_RECIPIENT=YW55d2F5c3RyZWFtZ3JpbWVzCg==
       - SIGNALER_SECRET=supersecretpassword
     image: iburistu/signaler
     ports:
@@ -70,6 +82,8 @@ services:
       - $HOME/.local/share/signal-cli:/etc/signal-cli
     restart: unless-stopped
 ```
+
+Note that the environment variables are not quoted - the regex to match whether or not it's an individual was touchy with regards to quotes. I'd avoid if possible.
 
 ## Sending Messages
 
@@ -90,8 +104,4 @@ You can format the `message` value with emoji, newlines, etc. Get creative!
 
 ## Debugging
 
-Two named FIFO pipes are created within the container, `/dev/signal` & `/dev/webhook`. You can read logs from either process using the following:
-
-> $ docker exec --it \<container name\> tail -F /dev/\<FIFO pipe\>
-
-I decided to pipe the outputs of both processes into named pipes because I originally intended to have a reader that could read incoming messages...but that may have been too ambitious & does not fit within the limited scope of this project. This may change in the future.
+supervisord pipes standard output & error of both processes (signal-cli in DBus mode, and the Rocket webhook) to `/dev/stdio`, so you can view logs using `docker log`.
