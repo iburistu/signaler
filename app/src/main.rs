@@ -2,7 +2,10 @@
 extern crate rocket;
 #[macro_use]
 extern crate lazy_static;
+extern crate base64;
+
 use dbus::blocking::SyncConnection;
+use regex::Regex;
 use rocket::http::Status;
 use rocket::request::{FromRequest, Outcome, Request};
 use rocket::serde::{json::Json, Deserialize, Serialize};
@@ -12,6 +15,10 @@ use std::time::Duration;
 
 lazy_static! {
     static ref SESSION: SyncConnection = SyncConnection::new_session().unwrap();
+}
+
+lazy_static! {
+    static ref RE: Regex = Regex::new(r"^\+?[1-9]\d{1,14}$").unwrap();
 }
 
 struct DBusSession {
@@ -62,21 +69,42 @@ fn index(
     connection: &State<DBusSession>,
 ) -> Json<IndexResponse> {
     let attachments: Vec<String> = vec![];
-    let (timestamp,): (i64,) = connection
-        .proxy
-        .method_call(
-            "org.asamk.Signal",
-            "sendMessage",
-            (
-                message.message.to_string(),
-                attachments,
-                env::var("SIGNAL_RECIPIENT").unwrap(),
-            ),
-        )
-        .unwrap();
-    Json(IndexResponse {
-        timestamp: Some(timestamp),
-    })
+    match RE.find(&env::var("SIGNAL_RECIPIENT").unwrap()) {
+        Some(_) => {
+            let (timestamp,): (i64,) = connection
+                .proxy
+                .method_call(
+                    "org.asamk.Signal",
+                    "sendMessage",
+                    (
+                        message.message.to_string(),
+                        attachments,
+                        env::var("SIGNAL_RECIPIENT").unwrap(),
+                    ),
+                )
+                .unwrap();
+            Json(IndexResponse {
+                timestamp: Some(timestamp),
+            })
+        }
+        None => {
+            let (timestamp,): (i64,) = connection
+                .proxy
+                .method_call(
+                    "org.asamk.Signal",
+                    "sendGroupMessage",
+                    (
+                        message.message.to_string(),
+                        attachments,
+                        base64::decode(env::var("SIGNAL_RECIPIENT").unwrap()).unwrap(),
+                    ),
+                )
+                .unwrap();
+            Json(IndexResponse {
+                timestamp: Some(timestamp),
+            })
+        }
+    }
 }
 
 #[derive(Serialize)]
