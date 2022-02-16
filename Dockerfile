@@ -1,3 +1,4 @@
+# Generate minimal JRE for signal-cli
 FROM eclipse-temurin:17 as jre-build
 
 RUN $JAVA_HOME/bin/jlink \
@@ -9,6 +10,7 @@ RUN $JAVA_HOME/bin/jlink \
     --compress=2 \
     --output /javaruntime
 
+# Build webhook server code
 FROM rust:latest as rust-build
 
 RUN apt-get update -qq && \
@@ -23,39 +25,20 @@ WORKDIR /usr/local/bin/signaler
 
 RUN cargo build --release
 
-FROM ubuntu:20.04 as runner
+# Build signal-cli with most up-to-date & compatible libraries
+FROM ubuntu:20.04 as signal-cli-build
+
 ARG SIGNAL_CLI_VER=0.10.1
 ARG LIBSIGNAL_VER=0.11.0
 ARG ZKGROUP_VER=0.8.2
-ENV JAVA_HOME=/opt/java/openjdk
-ENV PATH "${PATH}:${JAVA_HOME}/bin"
-ENV SIGNAL_SENDER="+11111111111"
-ENV SIGNAL_RECIPIENT="+22222222222"
-ENV SIGNALER_SECRET=""
-
-VOLUME [ "/etc/signal-cli" ]
-EXPOSE 8080/tcp
-
-LABEL maintainer="Zack Linkletter <zack@linkletter.dev>"
-
-COPY --from=jre-build /javaruntime $JAVA_HOME
 
 RUN apt-get update -qq && \
     DEBIAN_FRONTEND=noninteractive apt-get install -qq --no-install-recommends \
         ca-certificates \
         curl \
-        dbus \
-        libdbus-1-3 \
-        supervisor \
-        zip \
-        < /dev/null > /dev/null && \
-    rm -rf /var/lib/apt/lists/* && \
+        zip && \
     curl -sL "https://github.com/exquo/signal-libs-build/releases/download/signal-cli_v${SIGNAL_CLI_VER}/signal-cli-v${SIGNAL_CLI_VER}-x86_64-Linux.tar.gz" -o /tmp/signal-cli-"${SIGNAL_CLI_VER}".tar.gz && \
     tar -xzf /tmp/signal-cli-"${SIGNAL_CLI_VER}".tar.gz -C /opt && \
-    ln -sf /opt/signal-cli-"${SIGNAL_CLI_VER}"/bin/signal-cli /usr/local/bin/ && \
-    curl -sL "https://github.com/AsamK/signal-cli/raw/master/data/org.asamk.Signal.conf" -o /etc/dbus-1/system.d/org.asamk.Signal.conf && \
-    curl -sL "https://github.com/AsamK/signal-cli/raw/master/data/org.asamk.Signal.service" -o /usr/share/dbus-1/system-services/org.asamk.Signal.service && \
-    sed -i -e 's|policy user="signal-cli"|policy user="root"|' /etc/dbus-1/system.d/org.asamk.Signal.conf && \
     arch="$(uname -m)"; \
     case "$arch" in \
         x86_64) \
@@ -80,19 +63,47 @@ RUN apt-get update -qq && \
             tar -xzf /tmp/libzkgroup.so-v"${ZKGROUP_VER}"-armv7-unknown-linux-gnueabihf.tar.gz -C /tmp \
         ;; \
     esac; \
-    ls -la /tmp/ && \
     zip -uj /opt/signal-cli-"${SIGNAL_CLI_VER}"/lib/signal-client-java-"${LIBSIGNAL_VER}".jar /tmp/libsignal_jni.so || \
-    zip -uj /opt/signal-cli-"${SIGNAL_CLI_VER}"/lib/zkgroup-java-"${ZKGROUP_VER}".jar /tmp/libzkgroup.so || \
-    apt-get remove ca-certificates curl zip -y && \
-    rm -f /tmp/*
+    zip -uj /opt/signal-cli-"${SIGNAL_CLI_VER}"/lib/zkgroup-java-"${ZKGROUP_VER}".jar /tmp/libzkgroup.so || true
+
+# Runtime image
+FROM ubuntu:20.04 as runner
+
+ARG SIGNAL_CLI_VER=0.10.1
+ENV JAVA_HOME=/opt/java/openjdk
+ENV PATH "${PATH}:${JAVA_HOME}/bin"
+ENV SIGNAL_SENDER="+11111111111"
+ENV SIGNAL_RECIPIENT="+22222222222"
+ENV SIGNALER_SECRET=""
+
+VOLUME [ "/etc/signal-cli" ]
+EXPOSE 8080/tcp
+
+LABEL maintainer="Zack Linkletter <zack@linkletter.dev>"
+
+COPY --from=signal-cli-build /opt/signal-cli-"${SIGNAL_CLI_VER}" /opt/signal-cli-"${SIGNAL_CLI_VER}"
+
+RUN apt-get update -qq && \
+    DEBIAN_FRONTEND=noninteractive apt-get install -qq --no-install-recommends \
+        dbus \
+        libdbus-1-3 \
+        supervisor \
+        < /dev/null > /dev/null && \
+    rm -rf /var/lib/apt/lists/* && \
+    ln -sf /opt/signal-cli-"${SIGNAL_CLI_VER}"/bin/signal-cli /usr/local/bin/ && \
+    useradd signaler
 
 WORKDIR /usr/local/bin/signaler
 
+COPY --from=jre-build /javaruntime "${JAVA_HOME}"
 COPY --from=rust-build /usr/local/bin/signaler/target/release/signaler-webhook .
 COPY --from=rust-build /usr/local/bin/signaler/Rocket.toml .
 
 COPY supervisord.conf /etc/supervisor/conf.d/supervisord.conf
 COPY session-local.conf /etc/dbus-1/session-local.conf
+COPY org.asamk.Signal.conf /etc/dbus-1/system.d/org.asamk.Signal.conf
+
+USER signaler:signaler
 
 ENTRYPOINT [ "/usr/bin/dbus-run-session", "--config-file", "/etc/dbus-1/session-local.conf" ]
 
